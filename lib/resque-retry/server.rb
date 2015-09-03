@@ -38,13 +38,15 @@ module ResqueRetry
     # Helper methods used by retry tab.
     module Helpers
       # builds a retry key for the specified job.
+      #
+      # This method was modified for the resque-web-public branch because we
+      # don't have access to user code.
       def retry_key_for_job(job)
-        klass = get_class(job)
-        if klass.respond_to?(:redis_retry_key)
-          klass.redis_retry_key(job['args'])
-        else
-          nil
-        end
+        # Adapted from Resque::Plugins::Retry#retry_identifier
+        retry_identifier = Digest::SHA1.hexdigest( [job].join( '-' ) )
+
+        # Adapted from Resque::Plugins::Retry#redis_retry_key
+        ['resque-retry', job['class'], retry_identifier].compact.join(':').gsub(/\s/, '')
       end
 
       # gets the number of retry attempts for a job.
@@ -64,17 +66,14 @@ module ResqueRetry
       end
 
       # cancels job retry
+      #
+      # This method was modified for the resque-web-public branch because we
+      # don't have access to user code.
       def cancel_retry(job)
-        klass = get_class(job)
         retry_key = retry_key_for_job(job)
-        Resque.remove_delayed(klass, *job['args'])
+        Resque.remove_delayed(job['class'], *job['args'])
         Resque.redis.del("failure-#{retry_key}")
         Resque.redis.del(retry_key)
-      end
-
-      private
-      def get_class(job)
-        Resque::Job.new(nil, nil).constantize(job['class'])
       end
     end
 
